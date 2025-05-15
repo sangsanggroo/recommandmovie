@@ -1,71 +1,62 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import statsmodels.api as sm
 
-# 데이터 로드
+# 데이터 불러오기
 @st.cache_data
 def load_data():
-    df = pd.read_csv("world-happiness-2024.csv")
-    df.columns = [col.replace('Explained by: ', '').replace(' ', '_').lower() for col in df.columns]
-    df = df.rename(columns={'country_name': 'Country', 'ladder_score': 'Happiness_Score'})
+    df = pd.read_csv("movie_recommendations_500_full.csv")
     return df
 
 df = load_data()
 
-# 제목
-st.title("🌍 2024 World Happiness Dashboard")
-st.markdown("📊 **세계 행복지수 데이터를 다양한 방식으로 시각화한 대시보드입니다.**")
+st.title("🎬 나만의 영화 추천 대시보드")
+st.markdown("500편의 영화 데이터를 분석하여 다양한 시각화를 제공합니다.")
 
 # 탭 구성
-tab1, tab2, tab3 = st.tabs(["🌐 세계지도 시각화", "🏆 상위 국가 그래프", "📈 상관관계 분석"])
+tab1, tab2, tab3 = st.tabs(["⭐ 평점별 영화 추천", "👦 어린이 추천 영화", "📊 장르별 상관관계 분석"])
 
-# 🌐 탭1: 행복 점수 세계지도
+# ⭐ 탭1: 평점별 영화 추천
 with tab1:
-    st.subheader("국가별 행복 점수 지도")
-    fig_map = px.choropleth(
-        df,
-        locations="Country",
-        locationmode="country names",
-        color="Happiness_Score",
-        hover_name="Country",
-        color_continuous_scale="YlGnBu",
-        title="2024 세계 행복 점수"
-    )
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.subheader("평점대별 인기 영화 보기")
+    score_range = st.slider("평점 범위 선택", 9.0, 9.5, (9.2, 9.4), step=0.01)
+    filtered = df[(df["평점"] >= score_range[0]) & (df["평점"] <= score_range[1])]
+    st.write(f"🎞️ 총 {len(filtered)}편의 영화가 선택되었습니다.")
+    st.dataframe(filtered[["영화제목", "평점", "장르", "국가", "러닝타임"]])
 
-# 🏆 탭2: 행복 점수 상위 10개국 그래프
+    fig = px.histogram(filtered, x="평점", nbins=10, title="선택한 범위 내 평점 분포")
+    st.plotly_chart(fig, use_container_width=True)
+
+# 👦 탭2: 어린이 추천 영화
 with tab2:
-    st.subheader("행복 점수 상위 10개국")
-    top10 = df.sort_values("Happiness_Score", ascending=False).head(10)
-    fig_bar = px.bar(
-        top10,
-        x="Happiness_Score",
-        y="Country",
-        orientation="h",
-        color="Happiness_Score",
-        color_continuous_scale="Blues",
-        title="행복 점수 상위 10개국"
-    )
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.subheader("어린이를 위한 애니메이션 영화 추천")
+    kids_movies = df[df["장르"].str.contains("애니메이션")]
+    st.write(f"👶 총 {len(kids_movies)}편의 애니메이션 영화가 있습니다.")
+    st.dataframe(kids_movies[["영화제목", "평점", "국가", "러닝타임"]].sort_values(by="평점", ascending=False).head(20))
 
-# 📈 탭3: 행복 요소 간 상관관계 분석
+    fig = px.bar(kids_movies.sort_values("평점", ascending=False).head(10),
+                 x="평점", y="영화제목", orientation="h", color="국가",
+                 title="어린이 추천 애니메이션 TOP 10")
+    st.plotly_chart(fig, use_container_width=True)
+
+# 📊 탭3: 장르별 상관관계 분석 (애니/드라마/코미디 비중과 평점)
 with tab3:
-    st.subheader("행복 점수와 요인 간 관계 보기")
-    numeric_cols = ["Happiness_Score", "log_gdp_per_capita", "social_support",
-                    "healthy_life_expectancy", "freedom_to_make_life_choices",
-                    "generosity", "perceptions_of_corruption"]
+    st.subheader("장르별 영화와 평점 관계 보기")
 
-    selected_x = st.selectbox("X축 변수", numeric_cols, index=1)
-    selected_y = st.selectbox("Y축 변수", numeric_cols, index=0)
+    def genre_flag(genre_str, keyword):
+        return int(keyword in genre_str)
 
-    fig_scatter = px.scatter(
-        df,
-        x=selected_x,
-        y=selected_y,
-        text="Country",
-        trendline="ols",
-        title=f"{selected_x} vs {selected_y}"
-    )
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    df["is_애니메이션"] = df["장르"].apply(lambda x: genre_flag(x, "애니메이션"))
+    df["is_드라마"] = df["장르"].apply(lambda x: genre_flag(x, "드라마"))
+    df["is_코미디"] = df["장르"].apply(lambda x: genre_flag(x, "코미디"))
 
-    st.markdown("📌 선형 추세선을 통해 변수 간 관계를 시각적으로 파악할 수 있습니다.")
+    genre_df = df[["평점", "is_애니메이션", "is_드라마", "is_코미디"]]
+
+    st.write("🎯 선택 장르 여부와 평점 간의 관계:")
+    st.dataframe(genre_df.corr())
+
+    fig = px.scatter(df, x="is_코미디", y="평점", color="is_드라마",
+                     title="드라마/코미디 여부에 따른 평점 분포")
+    st.plotly_chart(fig, use_container_width=True)
